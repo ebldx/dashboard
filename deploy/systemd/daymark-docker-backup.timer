@@ -1,0 +1,11 @@
+[Unit]
+Description=Create a daily Daymark application backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+Persistent=true
+AccuracySec=5min
+Unit=daymark-docker-backup.service
+
+[Install]
+WantedBy=timers.target

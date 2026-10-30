@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry pending Daymark weekly reviews in Docker
+
+[Timer]
+OnCalendar=*-*-* 08,14,20:15:00
+Persistent=true
+AccuracySec=1min
+Unit=daymark-docker-automation@retry-weekly.service
+
+[Install]
+WantedBy=timers.target

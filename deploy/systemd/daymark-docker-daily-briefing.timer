@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate the Daymark daily briefing in Docker
+
+[Timer]
+OnCalendar=*-*-* 07:00:00
+Persistent=true
+AccuracySec=1min
+Unit=daymark-docker-automation@daily-briefing.service
+
+[Install]
+WantedBy=timers.target

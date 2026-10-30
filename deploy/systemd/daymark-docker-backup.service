@@ -1,0 +1,9 @@
+[Unit]
+Description=Create and verify a Daymark application backup in Docker
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/daymark
+ExecStart=/usr/bin/docker compose run --rm --no-deps api python -m app.backup /backups --keep 14

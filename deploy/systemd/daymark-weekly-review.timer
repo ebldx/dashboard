@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate the Daymark weekly review
+
+[Timer]
+OnCalendar=Mon *-*-* 07:15:00
+Persistent=true
+AccuracySec=1min
+Unit=daymark-automation@weekly-review.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,22 @@
+[Unit]
+Description=Daymark scheduled job: %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=daymark
+Group=daymark
+WorkingDirectory=/opt/daymark/backend
+EnvironmentFile=/opt/daymark/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=Europe/Oslo
+ExecStart=/opt/daymark/backend/.venv/bin/python -m app.automation %i
+StateDirectory=daymark
+StateDirectoryMode=0750
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/daymark

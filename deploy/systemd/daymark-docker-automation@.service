@@ -1,0 +1,10 @@
+[Unit]
+Description=Daymark scheduled job in Docker: %i
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/daymark
+Environment=TZ=Europe/Oslo
+ExecStart=/usr/bin/docker compose run --rm --no-deps api python -m app.automation %i

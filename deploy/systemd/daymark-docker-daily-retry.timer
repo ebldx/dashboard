@@ -1,0 +1,12 @@
+[Unit]
+Description=Retry pending Daymark daily briefings in Docker
+
+[Timer]
+OnCalendar=*-*-* 07..23:00
+OnCalendar=*-*-* 07..23:30
+Persistent=true
+AccuracySec=1min
+Unit=daymark-docker-automation@retry-daily.service
+
+[Install]
+WantedBy=timers.target
