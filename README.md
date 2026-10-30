@@ -1,6 +1,10 @@
 # Personal AI Dashboard
 
-A self-hosted dashboard for connecting daily responsibilities with academic, career, and personal goals. Phases 1–4 establish the application foundation, personal context, work management, and calendar synchronization. Phase 5 adds optional Ollama-backed daily briefings. Features not yet implemented are intentionally shown as unavailable rather than populated with invented personal data.
+[![CI](https://github.com/ebldx/dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/ebldx/dashboard/actions/workflows/ci.yml)
+
+A self-hosted dashboard for connecting daily responsibilities with academic, career, and personal goals. It includes personal information and work management, read-only calendar imports, optional Ollama-backed briefings, explainable planning, and scheduled reviews. Features not yet implemented are intentionally shown as unavailable rather than populated with invented personal data.
+
+> **Deployment status:** Authentication is not implemented. Run only on loopback or a trusted private network; do not expose this application publicly.
 
 ## Architecture
 
