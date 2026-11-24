@@ -243,6 +243,33 @@ def test_calendar_sync_rejects_private_feed_destinations() -> None:
         calendar_sync._validate_public_https_destination(Source.feed_url)
 
 
+def test_calendar_subscription_dns_validation_returns_resolved_public_ips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        calendar_sync.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ],
+    )
+
+    addresses = calendar_sync._validate_public_https_destination(
+        "https://calendar.example.test/feed.ics?token=abc"
+    )
+
+    assert addresses == ("93.184.216.34",)
+
+
+def test_pinned_calendar_url_keeps_https_path_query_and_ipv6_format() -> None:
+    pinned = calendar_sync._pinned_feed_url(
+        "https://calendar.example.test:8443/feed.ics?token=abc",
+        "2001:db8::1",
+    )
+
+    assert pinned == "https://[2001:db8::1]:8443/feed.ics?token=abc"
+
+
 def test_calendar_subscription_secret_is_encrypted_and_conditional_fetch_is_supported(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,12 +1,14 @@
 import ipaddress
 import socket
+import ssl
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import httpx
+import httpcore
 import recurring_ical_events
 from cryptography.fernet import Fernet, InvalidToken
 from icalendar import Calendar
@@ -73,7 +75,7 @@ class CalendarAdapter(Protocol):
     ) -> CalendarSnapshot: ...
 
 
-def _validate_public_https_destination(feed_url: str) -> None:
+def _validate_public_https_destination(feed_url: str) -> tuple[str, ...]:
     parsed = urlsplit(feed_url)
     hostname = parsed.hostname
     if (
@@ -106,6 +108,87 @@ def _validate_public_https_destination(feed_url: str) -> None:
     resolved = {ipaddress.ip_address(item[4][0]) for item in addresses}
     if not resolved or any(not address.is_global for address in resolved):
         raise CalendarSyncError("The calendar subscription host is not publicly routable.")
+    return tuple(str(address) for address in resolved)
+
+
+class _PinnedNetworkBackend(httpcore.SyncBackend):
+    def __init__(self, pinned_address: str) -> None:
+        super().__init__()
+        self.pinned_address = pinned_address
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: list | None = None,
+    ) -> httpcore.NetworkStream:
+        return super().connect_tcp(
+            host=self.pinned_address,
+            port=port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+
+class _HTTPCoreResponseStream(httpx.SyncByteStream):
+    def __init__(self, response: httpcore.Response) -> None:
+        self.response = response
+
+    def __iter__(self):
+        return iter(self.response.iter_raw())
+
+    def close(self) -> None:
+        self.response.close()
+
+
+class _PinnedHTTPTransport(httpx.BaseTransport):
+    def __init__(self, hostname: str, pinned_address: str) -> None:
+        self.hostname = hostname
+        ssl_context = ssl.create_default_context()
+        self.pool = httpcore.ConnectionPool(
+            ssl_context=ssl_context,
+            network_backend=_PinnedNetworkBackend(pinned_address),
+        )
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        request.extensions["sni_hostname"] = self.hostname
+        core_response = self.pool.handle_request(httpcore.Request(
+            method=request.method,
+            url=httpcore.URL(
+                scheme=request.url.raw_scheme,
+                host=request.url.raw_host,
+                port=request.url.port,
+                target=request.url.raw_path,
+            ),
+            headers=request.headers.raw,
+            content=request.stream,
+            extensions=request.extensions,
+        ))
+        stream = _HTTPCoreResponseStream(core_response)
+        return httpx.Response(
+            status_code=core_response.status,
+            headers=core_response.headers,
+            stream=stream,
+            extensions=core_response.extensions,
+        )
+
+    def close(self) -> None:
+        self.pool.close()
+
+
+def _pinned_feed_url(feed_url: str, address: str) -> str:
+    parsed = urlsplit(feed_url)
+    port = parsed.port
+    bracketed_address = f"[{address}]" if ":" in address else address
+    netloc = (
+        f"{bracketed_address}:{port}"
+        if port is not None
+        else bracketed_address
+    )
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, ""))
 
 
 def _fernet() -> Fernet:
@@ -140,20 +223,35 @@ def _download_feed(source: CalendarSource) -> DownloadedFeed:
         feed_url = decrypt_calendar_url(source.feed_url_encrypted)
     except CalendarEncryptionError as exc:
         raise CalendarSyncError(str(exc)) from exc
-    _validate_public_https_destination(feed_url)
-    headers = {"Accept": "text/calendar, text/plain;q=0.9"}
+    addresses = _validate_public_https_destination(feed_url)
+    headers = {
+        "Accept": "text/calendar, application/icalendar, text/plain;q=0.9",
+        "User-Agent": "Daymark/1.0 calendar subscription",
+    }
     if source.etag:
         headers["If-None-Match"] = source.etag
     if source.last_modified:
         headers["If-Modified-Since"] = source.last_modified
 
     try:
-        with httpx.Client(
-            timeout=httpx.Timeout(20.0, connect=8.0),
-            follow_redirects=False,
-            trust_env=False,
-        ) as client:
-            with client.stream("GET", feed_url, headers=headers) as response:
+        parsed = urlsplit(feed_url)
+        hostname = parsed.hostname
+        if not hostname:
+            raise CalendarSyncError("The calendar subscription host is invalid.")
+        client_options = {
+            "timeout": httpx.Timeout(20.0, connect=8.0),
+            "follow_redirects": False,
+            "trust_env": False,
+        }
+        request_url = feed_url
+        if addresses:
+            address = addresses[0]
+            transport = _PinnedHTTPTransport(hostname, address)
+            client_options["transport"] = transport
+            request_url = _pinned_feed_url(feed_url, address)
+            headers["Host"] = hostname
+        with httpx.Client(**client_options) as client:
+            with client.stream("GET", request_url, headers=headers) as response:
                 if response.status_code == 304:
                     return DownloadedFeed(
                         content=None,
@@ -417,20 +515,8 @@ def sync_calendar_source(session: Session, source: CalendarSource) -> dict[str, 
                     setattr(current, key, value)
                 updated_count += 1
 
-        lower_utc = lower.astimezone(UTC).replace(tzinfo=None)
-        upper_utc = upper.astimezone(UTC).replace(tzinfo=None)
-        existing_in_window = list(
-            session.scalars(
-                select(CalendarEvent).where(
-                    CalendarEvent.source_id == source.id,
-                    CalendarEvent.owner_id == DEFAULT_OWNER_ID,
-                    CalendarEvent.starts_at >= lower_utc,
-                    CalendarEvent.starts_at < upper_utc,
-                )
-            )
-        )
         deleted_count = 0
-        for old_event in existing_in_window:
+        for old_event in existing.values():
             if (old_event.source_uid, old_event.occurrence_key) not in identities:
                 session.delete(old_event)
                 deleted_count += 1
