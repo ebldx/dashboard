@@ -1,5 +1,7 @@
 # Proxmox deployment
 
+> **AI-generated project notice:** This project and this guide are entirely AI-generated and have not been independently audited or certified for production use. Verify the configuration, backups, network exposure, and upgrade steps in an isolated test environment before relying on them.
+
 This guide deploys Daymark in a dedicated Debian VM on Proxmox VE using Docker Compose. A VM keeps Docker and application updates separate from the Proxmox host. Do not install the application or Docker Engine on the Proxmox host.
 
 ## 1. Create and secure the VM
@@ -84,7 +86,38 @@ docker compose run --rm --no-deps api python -m app.backup --verify "/backups/$B
 
 Keep copies of the archive and `.env` encryption key in separate protected locations. Periodically test recovery in an isolated VM: stop the app, verify the archive, extract it to a staging directory, restore `database/dashboard.db` to the configured SQLite database path and the archive's `files/` contents to `FILE_STORAGE_DIR`, then start the app and check its health. Never test restore over the only production copy.
 
-## 4. Proxmox backup and recovery
+## 4. Update an existing Proxmox deployment
+
+Update the application with the deployment account. Before changing versions, review the repository's release notes or GitHub changes and create a verified application backup:
+
+```sh
+cd /opt/daymark
+docker compose run --rm --no-deps api python -m app.backup /backups --keep 14
+BACKUP_FILE="$(find /mnt/daymark-backups -maxdepth 1 -name 'daymark-backup-*.zip' -type f -printf '%f\n' | sort | tail -n 1)"
+docker compose run --rm --no-deps api python -m app.backup --verify "/backups/$BACKUP_FILE"
+```
+
+Stop the old containers, pull the approved changes, rebuild, and start the new version:
+
+```sh
+docker compose down
+sudo -u daymark -H git -C /opt/daymark pull --ff-only
+docker compose up --build -d
+docker compose ps
+curl --fail http://127.0.0.1:3000/api/system/health
+```
+
+The API image runs Alembic migrations before starting FastAPI. Inspect startup and application logs if any service is unhealthy:
+
+```sh
+docker compose logs --tail=100 api
+docker compose logs --tail=100 frontend
+docker compose ps
+```
+
+Do not rotate `CALENDAR_ENCRYPTION_KEY` as part of an ordinary update. Back up `.env` securely and keep the existing key so stored calendar feed URLs remain decryptable.
+
+## 5. Proxmox backup and recovery
 
 Configure Proxmox Backup Server or scheduled `vzdump` backups for the VM, with retention and off-host storage appropriate to your recovery objectives. A VM snapshot alone is not a substitute for the application archive and does not back up the `.env` key safely. Protect guest and archive backups as sensitive personal data.
 

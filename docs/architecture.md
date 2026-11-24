@@ -1,5 +1,7 @@
 # Architecture and assumptions
 
+> **AI-generated project notice:** The implementation and all documentation in this project are entirely AI-generated and may contain errors. Human review and testing are required for security-sensitive configuration, personal data handling, deployment, and backup procedures.
+
 ## Current implementation
 
 This project uses a modular monolith with two deployable processes. The Next.js application serves the user interface. The FastAPI application exposes the backend API and is the only service that accesses SQLite. Alembic owns schema changes; application startup does not create tables implicitly. The container setup keeps the database on a named persistent volume and does not publish the API port to the host.
@@ -12,7 +14,7 @@ Calendar events are imported read-only and stored separately from tasks and user
 
 `CalendarAdapter` defines the normalized snapshot contract. The current authorized personal iCalendar subscription adapter implements it; no official Mine studier REST integration has been verified, and authenticated pages are not scraped. Calendar sync remains manual.
 
-## Planned boundaries
+## Architecture boundaries
 
 - Domain API routes validate requests and delegate data access and behavior to backend services.
 - Calendar feeds use a backend adapter interface; imported events remain separate from user-created appointments and tasks.

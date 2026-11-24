@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/ebldx/dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/ebldx/dashboard/actions/workflows/ci.yml)
 
+> **AI-generated project notice:** This project is entirely AI-generated: the implementation, tests, and documentation were produced with AI assistance. It has not been independently audited or certified as suitable for production use. Review changes, configuration, and security boundaries carefully before entering or sending personal data.
+
 A self-hosted dashboard for connecting daily responsibilities with academic, career, and personal goals. It includes personal information and work management, read-only calendar imports, optional Ollama-backed briefings, explainable planning, and scheduled reviews. Features not yet implemented are intentionally shown as unavailable rather than populated with invented personal data.
 
 > **Deployment status:** Authentication is not implemented. Run only on loopback or a trusted private network; do not expose this application publicly.
@@ -112,6 +114,29 @@ docker compose up --build -d
 ```
 
 The initial Compose configuration binds the frontend to `127.0.0.1:3000`; the API is only reachable on the internal Compose network. Uploaded CVs are stored under the same persistent `dashboard_data` volume with private filesystem permissions. **Authentication is not implemented yet**: keep this deployment restricted to a trusted local machine and do not expose it through a network reverse proxy until authentication and HTTPS are configured. Persistent SQLite data is stored in the `dashboard_data` volume.
+
+### Update an existing Docker Compose instance
+
+Create a backup before updating. Then stop the containers, update the checkout, rebuild the new images, and start the app:
+
+```sh
+cd /path/to/dashboard
+docker compose run --rm --no-deps api python -m app.backup /backups --keep 14
+docker compose down
+git pull --ff-only
+docker compose up --build -d
+docker compose ps
+curl --fail http://127.0.0.1:3000/api/system/health
+```
+
+The API container applies pending Alembic migrations automatically on startup. Keep the same `.env` file and `CALENDAR_ENCRYPTION_KEY`, because changing or losing the key makes saved calendar feed URLs unusable. Check the application logs after updating:
+
+```sh
+docker compose logs --tail=100 api
+docker compose logs --tail=100 frontend
+```
+
+For the recommended Proxmox layout, see [the Proxmox deployment and update guide](docs/proxmox-deployment.md).
 
 ## Current phase
 
